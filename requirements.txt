@@ -1,0 +1,17 @@
+# 나무의사 MCP 서버 의존성 패키지
+
+# MCP 프레임워크 (Anthropic 공식)
+mcp[cli]>=1.6.0
+
+# AI 진단 (Claude API)
+anthropic>=0.49.0
+
+# HTTP 클라이언트 (공공데이터 API 호출)
+httpx>=0.27.0
+
+# 환경변수 관리 (.env 파일 로드)
+python-dotenv>=1.0.0
+
+# 클라우드 배포용 (선택사항)
+# uvicorn>=0.30.0     # ASGI 서버 (streamable-http 모드)
+# gunicorn>=22.0.0    # 프로덕션 서버
