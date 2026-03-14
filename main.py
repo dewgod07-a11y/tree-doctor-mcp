@@ -1,13 +1,12 @@
 """
-🌳 나무의사 MCP 서버 - 메인 진입점
 Tree Doctor MCP Server for Kakao PlayMCP
-
-실행 방법:
-  pip install -r requirements.txt
-  python main.py
 """
 
+import os
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
 from tools.diagnosis import (
     diagnose_tree_disease,
     diagnose_tree_disease_by_image,
@@ -30,47 +29,50 @@ from tools.schedule import (
     send_care_reminder_to_kakao,
 )
 
-# ── MCP 서버 인스턴스 생성 ───────────────────────────────────────────────────
-import os
+# ── MCP 서버 인스턴스 ─────────────────────────────────────────────
 mcp = FastMCP(
-    name="나무의사 MCP",
-    instructions="""
-    이 MCP는 수목 병해충 진단, 나무병원 찾기, 수목 처방 조회,
-    수목 관리 일정 기록 기능을 제공합니다.
-    나무 관련 질문이 들어오면 적절한 Tool을 선택해 실행하세요.
-    """,
+    name="tree-doctor-mcp",
+    instructions=(
+        "수목 병해충 진단, 나무병원 찾기, 수목 처방 조회, "
+        "수목 관리 일정 기록 기능을 제공합니다."
+    ),
     host="0.0.0.0",
     port=int(os.environ.get("PORT", 8000)),
     stateless_http=True,
 )
 
-# ── Tool 등록 ────────────────────────────────────────────────────────────────
-# 카테고리 1: 병해충 진단
+# ── Health check (Railway / PlayMCP 연결 확인용) ──────────────────
+@mcp.custom_route("/", methods=["GET"])
+async def root(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok", "service": "tree-doctor-mcp"})
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+# ── Tool 등록 ─────────────────────────────────────────────────────
 mcp.tool()(diagnose_tree_disease)
 mcp.tool()(diagnose_tree_disease_by_image)
 mcp.tool()(get_pest_detail)
 mcp.tool()(get_seasonal_pest_alert)
 
-# 카테고리 2: 나무병원 찾기
 mcp.tool()(find_tree_hospital_nearby)
 mcp.tool()(find_tree_doctor)
 mcp.tool()(get_tree_hospital_detail)
 
-# 카테고리 3: 수목 처방 DB
 mcp.tool()(get_treatment_prescription)
 mcp.tool()(search_approved_pesticide)
 mcp.tool()(get_tree_species_info)
 
-# 카테고리 4: 관리 일정·이력
 mcp.tool()(create_tree_care_schedule)
 mcp.tool()(get_tree_care_history)
 mcp.tool()(send_care_reminder_to_kakao)
 
-
+# ── ASGI app (uvicorn main:app 으로 실행) ─────────────────────────
 app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    mcp.run(transport="streamable-http")
 
