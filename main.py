@@ -31,6 +31,7 @@ from tools.schedule import (
 )
 
 # ── MCP 서버 인스턴스 생성 ───────────────────────────────────────────────────
+import os
 mcp = FastMCP(
     name="나무의사 MCP",
     instructions="""
@@ -38,6 +39,8 @@ mcp = FastMCP(
     수목 관리 일정 기록 기능을 제공합니다.
     나무 관련 질문이 들어오면 적절한 Tool을 선택해 실행하세요.
     """,
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", 8000)),
 )
 
 # ── Tool 등록 ────────────────────────────────────────────────────────────────
@@ -64,7 +67,5 @@ mcp.tool()(send_care_reminder_to_kakao)
 
 
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    mcp.run(transport="streamable-http")
 
