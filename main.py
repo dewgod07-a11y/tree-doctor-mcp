@@ -69,4 +69,6 @@ if __name__ == "__main__":
     # mcp.run(transport="stdio")
 
     # 클라우드 배포 시 아래로 교체:
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
+   import os
+    port = int(os.environ.get("PORT", 8000))
+    mcp.run(transport="streamable-http", port=port)
