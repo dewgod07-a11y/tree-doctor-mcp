@@ -65,11 +65,4 @@ mcp.tool()(send_care_reminder_to_kakao)
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
-    # 로컬 테스트: stdio 모드
-    # 클라우드 배포: streamable-http 모드 (아래 주석 해제)
-    # mcp.run(transport="stdio")
 
-    # 클라우드 배포 시 아래로 교체:
-   import os
-    port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="streamable-http", port=port)
