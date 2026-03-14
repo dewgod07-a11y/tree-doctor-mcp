@@ -2,7 +2,8 @@
 tests/test_tools.py  -  Tool 동작 로컬 테스트 스크립트
 실행: python tests/test_tools.py
 """
-import asyncio, sys, os
+import asyncio, sys, os, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools.diagnosis  import diagnose_tree_disease, get_seasonal_pest_alert
