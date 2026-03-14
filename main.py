@@ -67,6 +67,10 @@ mcp.tool()(get_tree_care_history)
 mcp.tool()(send_care_reminder_to_kakao)
 
 
+app = mcp.streamable_http_app()
+
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
