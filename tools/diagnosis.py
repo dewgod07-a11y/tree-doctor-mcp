@@ -17,6 +17,15 @@ from config.settings import settings
 anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
+def _to_list(val) -> list:
+    """공공 API가 단일 항목일 때 dict로 반환하는 케이스 처리"""
+    if isinstance(val, list):
+        return val
+    if isinstance(val, dict):
+        return [val]
+    return []
+
+
 # ── Tool 1: diagnose_tree_disease ────────────────────────────────────────────
 async def diagnose_tree_disease(
     tree_species: str,
@@ -128,29 +137,32 @@ async def diagnose_tree_disease_by_image(
 }}
 """
     import re
-    response = await anthropic_client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=1000,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "url", "url": image_url}},
-                {"type": "text", "text": prompt},
-            ],
-        }],
-    )
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"```json|```", "", raw).strip()
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group())
-            except json.JSONDecodeError:
-                pass
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=1000,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "url", "url": image_url}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"```json|```", "", raw).strip()
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
         return {"error": "AI 응답 파싱 실패", "image_url": image_url}
+    except Exception as e:
+        return {"error": f"AI 비전 진단 오류: {str(e)}", "image_url": image_url}
 
 
 # ── Tool 3: get_pest_detail ──────────────────────────────────────────────────
@@ -181,7 +193,7 @@ async def get_pest_detail(
             resp = await client.get(url, params=params, timeout=10.0)
             if resp.status_code == 200:
                 data = resp.json()
-                items = (
+                items = _to_list(
                     data.get("response", {})
                         .get("body", {})
                         .get("items", {})
@@ -222,7 +234,10 @@ async def get_pest_detail(
         except Exception:
             m = re.search(r"\{.*\}", raw, re.DOTALL)
             if m:
-                return json.loads(m.group())
+                try:
+                    return json.loads(m.group())
+                except Exception:
+                    pass
             return {"error": "파싱 실패", "pest_name": pest_name}
 
     return {

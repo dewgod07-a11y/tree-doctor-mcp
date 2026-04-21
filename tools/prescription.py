@@ -14,6 +14,14 @@ from config.settings import settings
 anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
+def _to_list(val) -> list:
+    if isinstance(val, list):
+        return val
+    if isinstance(val, dict):
+        return [val]
+    return []
+
+
 async def get_treatment_prescription(
     pest_name: str,
     tree_species: str,
@@ -122,7 +130,7 @@ async def search_approved_pesticide(
         try:
             resp = await client.get(url, params=params, timeout=10.0)
             if resp.status_code == 200:
-                items = (
+                items = _to_list(
                     resp.json().get("response", {})
                                .get("body", {})
                                .get("items", {})
@@ -218,14 +226,14 @@ async def get_tree_species_info(
         try:
             resp = await client.get(url, params=params, timeout=10.0)
             if resp.status_code == 200:
-                items = (
+                items = _to_list(
                     resp.json().get("response", {})
                                .get("body", {})
                                .get("items", {})
                                .get("item", [])
                 )
                 if items:
-                    item = items[0] if isinstance(items, list) else items
+                    item = items[0]
                     species_data = {
                         "korean_name":  item.get("korNm", species_name),
                         "scientific_name": item.get("sciNm", ""),

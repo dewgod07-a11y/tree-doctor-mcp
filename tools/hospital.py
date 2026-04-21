@@ -11,6 +11,14 @@ import httpx
 from config.settings import settings
 
 
+def _to_list(val) -> list:
+    if isinstance(val, list):
+        return val
+    if isinstance(val, dict):
+        return [val]
+    return []
+
+
 def _haversine_km(lat1, lon1, lat2, lon2):
     R = 6371
     dlat = math.radians(lat2 - lat1)
@@ -107,7 +115,7 @@ async def find_tree_hospital_nearby(
             try:
                 resp = await client.get(pub_url, params=params, timeout=10.0)
                 if resp.status_code == 200:
-                    raw_list = (
+                    raw_list = _to_list(
                         resp.json().get("response", {})
                                    .get("body", {})
                                    .get("items", {})
@@ -180,7 +188,7 @@ async def find_tree_doctor(
         try:
             resp = await client.get(url, params=params, timeout=10.0)
             if resp.status_code == 200:
-                raw = resp.json().get("response", {}).get("body", {}).get("items", {}).get("item", [])
+                raw = _to_list(resp.json().get("response", {}).get("body", {}).get("items", {}).get("item", []))
                 for d in raw:
                     if affiliation and affiliation not in d.get("hospNm", ""):
                         continue
