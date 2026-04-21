@@ -11,10 +11,10 @@ tools/diagnosis.py
 from __future__ import annotations
 import json
 import httpx
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from config.settings import settings
 
-anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 # ── Tool 1: diagnose_tree_disease ────────────────────────────────────────────
@@ -59,25 +59,28 @@ async def diagnose_tree_disease(
   "need_expert": true
 }}
 """
-    response = anthropic_client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-    )
     import re
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"```json|```", "", raw).strip()
     try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                result = json.loads(m.group())
-            except json.JSONDecodeError:
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"```json|```", "", raw).strip()
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    result = json.loads(m.group())
+                except json.JSONDecodeError:
+                    result = {"diagnoses": [], "general_advice": "AI 응답 파싱 실패", "need_expert": True}
+            else:
                 result = {"diagnoses": [], "general_advice": "AI 응답 파싱 실패", "need_expert": True}
-        else:
-            result = {"diagnoses": [], "general_advice": "AI 응답 파싱 실패", "need_expert": True}
+    except Exception as e:
+        result = {"diagnoses": [], "general_advice": f"AI 진단 오류: {str(e)}", "need_expert": True}
     result["input"] = {
         "tree_species": tree_species,
         "symptoms": symptoms,
@@ -124,7 +127,8 @@ async def diagnose_tree_disease_by_image(
   "recommendation": "전문가 방문 권고 여부 및 이유"
 }}
 """
-    response = anthropic_client.messages.create(
+    import re
+    response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1000,
         messages=[{
@@ -135,7 +139,6 @@ async def diagnose_tree_disease_by_image(
             ],
         }],
     )
-    import re
     raw = response.content[0].text.strip()
     raw = re.sub(r"```json|```", "", raw).strip()
     try:
@@ -206,7 +209,7 @@ async def get_pest_detail(
   "prevention": "예방 방법"
 }}]
 """
-        response = anthropic_client.messages.create(
+        response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
             max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
@@ -266,21 +269,24 @@ async def get_seasonal_pest_alert(
   "monthly_tip": "이달의 수목 관리 핵심 포인트"
 }}
 """
-    response = anthropic_client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-    )
     import re
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"```json|```", "", raw).strip()
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group())
-            except json.JSONDecodeError:
-                pass
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"```json|```", "", raw).strip()
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
         return {"error": "파싱 실패", "month": month, "region": region}
+    except Exception as e:
+        return {"error": f"AI 오류: {str(e)}", "month": month, "region": region}

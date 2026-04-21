@@ -8,10 +8,10 @@ tools/prescription.py
 from __future__ import annotations
 import json
 import httpx
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from config.settings import settings
 
-anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 async def get_treatment_prescription(
@@ -68,12 +68,12 @@ async def get_treatment_prescription(
   "legal_note": "산림보호법 관련 주의사항 (해당시)"
 }}
 """
-    response = anthropic_client.messages.create(
+    import re
+    response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
-    import re
     raw = response.content[0].text.strip()
     raw = re.sub(r"```json|```", "", raw).strip()
     try:
@@ -164,7 +164,7 @@ async def search_approved_pesticide(
   "note": "주의사항"
 }}]
 """
-        response = anthropic_client.messages.create(
+        response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
@@ -265,12 +265,12 @@ async def get_tree_species_info(
   "fertilization": "시비 방법 및 시기"
 }}
 """
-    response = anthropic_client.messages.create(
+    import re
+    response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
-    import re
     raw = response.content[0].text.strip()
     raw = re.sub(r"```json|```", "", raw).strip()
     try:

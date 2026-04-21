@@ -34,6 +34,41 @@ async def _geocode_address(address: str):
     return None
 
 
+async def _search_hospitals_kakao(lat: float, lon: float, radius_km: float) -> list:
+    """카카오맵 키워드 검색으로 나무병원 찾기 (실제 영업 중인 장소 반환)"""
+    url = f"{settings.KAKAO_MAP_API_BASE}/search/keyword.json"
+    headers = {"Authorization": f"KakaoAK {settings.KAKAO_MAP_API_KEY}"}
+    radius_m = int(min(radius_km * 1000, 20000))
+    hospitals = []
+    async with httpx.AsyncClient() as client:
+        for query in ["나무병원", "수목진료소", "나무의사"]:
+            try:
+                resp = await client.get(
+                    url,
+                    headers=headers,
+                    params={"query": query, "x": str(lon), "y": str(lat), "radius": radius_m, "size": 15},
+                    timeout=10.0,
+                )
+                if resp.status_code == 200:
+                    for d in resp.json().get("documents", []):
+                        if any(h["hospital_id"] == d.get("id") for h in hospitals):
+                            continue
+                        dist_m = float(d.get("distance", 0))
+                        hospitals.append({
+                            "hospital_id":   d.get("id", ""),
+                            "name":          d.get("place_name", ""),
+                            "address":       d.get("road_address_name", "") or d.get("address_name", ""),
+                            "phone":         d.get("phone", ""),
+                            "business_type": d.get("category_name", ""),
+                            "distance_km":   round(dist_m / 1000, 2),
+                            "status":        "영업중",
+                            "kakao_url":     d.get("place_url", ""),
+                        })
+            except Exception:
+                continue
+    return hospitals
+
+
 async def find_tree_hospital_nearby(
     location: str,
     radius_km: float = 10.0,
@@ -54,56 +89,62 @@ async def find_tree_hospital_nearby(
         return {"error": f"'{location}' 주소를 찾을 수 없습니다."}
     user_lat, user_lon = coords
 
-    # 산림청 나무병원 등록현황 API 호출
-    url = "https://apis.data.go.kr/1400000/forestService/getTreeHospitalList"
-    params = {
-        "serviceKey": settings.DATA_GO_KR_API_KEY,
-        "numOfRows": 100,
-        "pageNo": 1,
-        "_type": "json",
-    }
-    if business_type:
-        params["bizType"] = business_type
+    # 카카오맵 키워드 검색 (나무병원, 수목진료소, 나무의사)
+    hospitals = await _search_hospitals_kakao(user_lat, user_lon, radius_km)
 
-    hospitals = []
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(url, params=params, timeout=10.0)
-            if resp.status_code == 200:
-                raw_list = (
-                    resp.json().get("response", {})
-                               .get("body", {})
-                               .get("items", {})
-                               .get("item", [])
-                )
-                for h in raw_list:
-                    if open_only and h.get("closeYn") == "Y":
-                        continue
-                    h_lat = float(h.get("lat") or 0)
-                    h_lon = float(h.get("lon") or 0)
-                    if h_lat and h_lon:
-                        dist = _haversine_km(user_lat, user_lon, h_lat, h_lon)
-                        if dist <= radius_km:
-                            hospitals.append({
-                                "hospital_id":   h.get("hospId", ""),
-                                "name":          h.get("hospNm", ""),
-                                "address":       h.get("addr", ""),
-                                "phone":         h.get("telNo", ""),
-                                "business_type": h.get("bizType", ""),
-                                "distance_km":   round(dist, 2),
-                                "status":        "영업중",
-                            })
-        except Exception:
-            hospitals = [{
-                "hospital_id": "SAMPLE",
-                "name": "⚠️ 샘플 - data.go.kr에서 API 키 발급 필요",
-                "address": "산림청 나무병원 API 신청: data.go.kr/data/15091330",
-                "phone": "042-481-4151 (산림청)",
-                "distance_km": 0.0,
-                "status": "영업중",
-            }]
+    # 공공 데이터 API 보완 (카카오맵 결과가 부족할 때)
+    if len(hospitals) < 3:
+        pub_url = "https://apis.data.go.kr/1400000/forestService/getTreeHospitalList"
+        params = {
+            "serviceKey": settings.DATA_GO_KR_API_KEY,
+            "numOfRows": 100,
+            "pageNo": 1,
+            "_type": "json",
+        }
+        if business_type:
+            params["bizType"] = business_type
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(pub_url, params=params, timeout=10.0)
+                if resp.status_code == 200:
+                    raw_list = (
+                        resp.json().get("response", {})
+                                   .get("body", {})
+                                   .get("items", {})
+                                   .get("item", [])
+                    )
+                    for h in raw_list:
+                        if open_only and h.get("closeYn") == "Y":
+                            continue
+                        h_lat = float(h.get("lat") or 0)
+                        h_lon = float(h.get("lon") or 0)
+                        if h_lat and h_lon:
+                            dist = _haversine_km(user_lat, user_lon, h_lat, h_lon)
+                            if dist <= radius_km:
+                                hospitals.append({
+                                    "hospital_id":   h.get("hospId", ""),
+                                    "name":          h.get("hospNm", ""),
+                                    "address":       h.get("addr", ""),
+                                    "phone":         h.get("telNo", ""),
+                                    "business_type": h.get("bizType", ""),
+                                    "distance_km":   round(dist, 2),
+                                    "status":        "영업중",
+                                })
+            except Exception:
+                pass
 
     hospitals.sort(key=lambda x: x["distance_km"])
+
+    if not hospitals:
+        return {
+            "search_location": location,
+            "radius_km": radius_km,
+            "total_count": 0,
+            "hospitals": [],
+            "message": f"{location} 반경 {radius_km}km 내 나무병원을 찾지 못했습니다. 반경을 늘리거나 다른 지역을 검색해보세요.",
+            "kakao_map_url": f"https://map.kakao.com/?q=나무병원&where={location}",
+        }
+
     return {
         "search_location": location,
         "radius_km": radius_km,
