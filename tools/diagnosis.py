@@ -72,7 +72,7 @@ async def diagnose_tree_disease(
     try:
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=2000,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
@@ -140,7 +140,7 @@ async def diagnose_tree_disease_by_image(
     try:
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=1000,
+            max_tokens=4096,
             messages=[{
                 "role": "user",
                 "content": [
@@ -223,7 +223,7 @@ async def get_pest_detail(
 """
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=3000,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         import re
@@ -288,7 +288,7 @@ async def get_seasonal_pest_alert(
     try:
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=2000,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()

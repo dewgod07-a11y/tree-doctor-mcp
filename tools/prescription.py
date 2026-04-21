@@ -79,7 +79,7 @@ async def get_treatment_prescription(
     import re
     response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
-        max_tokens=2000,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
@@ -174,7 +174,7 @@ async def search_approved_pesticide(
 """
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=2000,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         import re
@@ -245,10 +245,11 @@ async def get_tree_species_info(
             pass
 
     # AI로 관리 정보 보완
-    pests_request = "주요 병해충 목록과 발생 시기를 포함하세요." if include_pests else ""
+    pests_request = "주요 병해충 최대 3종만 간략히 포함하세요." if include_pests else ""
     prompt = f"""
 한국의 수목 '{species_name}'에 대한 관리 정보를 JSON 형식으로 제공하세요.
 {pests_request}
+각 항목은 1~2문장으로 간결하게 작성하세요.
 (다른 설명 없이 JSON만 반환)
 
 {{
@@ -276,7 +277,7 @@ async def get_tree_species_info(
     import re
     response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
-        max_tokens=2000,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
