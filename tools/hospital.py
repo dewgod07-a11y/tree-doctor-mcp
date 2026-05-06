@@ -118,36 +118,38 @@ async def find_tree_hospital_nearby(
 
         # 카카오맵 결과가 부족하면 산림청 공공 API 보완
         if len(hospitals) < 3:
-            pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/getTreeHospitalInfoList"
+            pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
             api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
-            # 시도명 추출 (주소 앞 2글자: 서울, 경기 등)
-            sido = location[:2] if location else ""
             params = {
                 "serviceKey": api_key,
-                "numOfRows": 100, "pageNo": 1,
+                "numOfRows": 200, "pageNo": 1,
             }
-            if sido:
-                params["sidoName"] = sido
             async with httpx.AsyncClient() as client:
                 try:
-                    resp = await client.get(pub_url, params=params, timeout=10.0)
+                    resp = await client.get(pub_url, params=params, timeout=15.0)
                     if resp.status_code == 200:
                         import xml.etree.ElementTree as ET
                         root = ET.fromstring(resp.text)
                         for item in root.findall(".//item"):
                             def t(tag): return (item.findtext(tag) or "").strip()
-                            if open_only and t("hogyStus") == "폐업":
+                            if open_only and t("clsbiz") == "폐업":
                                 continue
-                            if business_type and business_type not in t("hogyBizType"):
+                            if business_type and business_type not in t("bsnsskindnm"):
+                                continue
+                            # 시도명으로 지역 필터링
+                            sido = location[:2] if location else ""
+                            addr = t("lctnaddr")
+                            if sido and sido not in addr and sido not in t("ctpvnm"):
                                 continue
                             hospitals.append({
-                                "hospital_id":   t("hogyNo"),
-                                "name":          t("hogyName"),
-                                "address":       t("hogyAddr"),
-                                "phone":         t("hogyTelno"),
-                                "business_type": t("hogyBizType"),
+                                "hospital_id":   t("corpnm"),
+                                "name":          t("corpnm"),
+                                "address":       addr,
+                                "phone":         "",
+                                "business_type": t("bsnsskindnm"),
                                 "distance_km":   0,
-                                "status":        t("hogyStus") or "영업중",
+                                "status":        t("clsbiz") or "영업중",
+                                "representative": t("rprsvnm"),
                             })
                 except Exception:
                     pass
