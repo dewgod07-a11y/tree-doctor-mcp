@@ -94,49 +94,56 @@ async def _search_hospitals_kakao(lat: float, lon: float, radius_km: float) -> l
     return hospitals
 
 
+async def _fetch_pub_page(client, url: str, base_params: dict, page_no: int) -> list:
+    """공공 API 단일 페이지 요청"""
+    try:
+        resp = await client.get(url, params={**base_params, "numOfRows": 200, "pageNo": page_no}, timeout=8.0)
+        if resp.status_code == 200:
+            root = ET.fromstring(resp.text)
+            return root.findall(".//item")
+    except Exception:
+        pass
+    return []
+
+
 async def _search_hospitals_public(sido: str, business_type: str, open_only: bool) -> tuple:
-    """산림청 공공 API로 나무병원 검색. (hospitals, debug_info) 반환"""
+    """산림청 공공 API — 200건×10페이지 병렬 요청. (hospitals, debug_info) 반환"""
     pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
     api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
-    ctpvnm_full = _SIDO_MAP.get(sido, "")
-
-    params: dict = {"serviceKey": api_key, "numOfRows": 2000, "pageNo": 1}
-    if ctpvnm_full:
-        params["ctpvnm"] = ctpvnm_full
-
-    hospitals = []
-    debug: dict = {"status": "not_called", "total_items": 0, "filtered": 0, "sido": sido, "ctpvnm": ctpvnm_full}
+    base_params: dict = {"serviceKey": api_key}
+    debug: dict = {"total_items": 0, "filtered": 0, "sido": sido}
 
     async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(pub_url, params=params, timeout=12.0)
-            debug["status"] = resp.status_code
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.text)
-                all_items = root.findall(".//item")
-                debug["total_items"] = len(all_items)
-                for item in all_items:
-                    def t(tag, _item=item): return (_item.findtext(tag) or "").strip()
-                    if open_only and t("clsbiz") == "폐업":
-                        continue
-                    if business_type and business_type not in t("bsnsskindnm"):
-                        continue
-                    addr = t("lctnaddr")
-                    ctpv = t("ctpvnm")
-                    if sido and sido not in addr and sido not in ctpv:
-                        continue
-                    hospitals.append({
-                        "hospital_id":   t("corpnm"),
-                        "name":          t("corpnm"),
-                        "address":       addr,
-                        "phone":         "",
-                        "business_type": t("bsnsskindnm"),
-                        "distance_km":   0,
-                        "status":        t("clsbiz") or "영업중",
-                    })
-                debug["filtered"] = len(hospitals)
-        except Exception as e:
-            debug["status"] = f"error({type(e).__name__}): {str(e)[:100]}"
+        pages = await asyncio.gather(*[
+            _fetch_pub_page(client, pub_url, base_params, page)
+            for page in range(1, 11)
+        ])
+
+    all_items = [item for page_items in pages for item in page_items]
+    debug["total_items"] = len(all_items)
+
+    hospitals = []
+    for item in all_items:
+        def t(tag, _item=item): return (_item.findtext(tag) or "").strip()
+        if open_only and t("clsbiz") == "폐업":
+            continue
+        if business_type and business_type not in t("bsnsskindnm"):
+            continue
+        addr = t("lctnaddr")
+        ctpv = t("ctpvnm")
+        if sido and sido not in addr and sido not in ctpv:
+            continue
+        hospitals.append({
+            "hospital_id":   t("corpnm"),
+            "name":          t("corpnm"),
+            "address":       addr,
+            "phone":         "",
+            "business_type": t("bsnsskindnm"),
+            "distance_km":   0,
+            "status":        t("clsbiz") or "영업중",
+        })
+
+    debug["filtered"] = len(hospitals)
     return hospitals, debug
 
 
