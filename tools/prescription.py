@@ -7,19 +7,25 @@ tools/prescription.py
 """
 from __future__ import annotations
 import json
-import httpx
+import re
 from anthropic import AsyncAnthropic
 from config.settings import settings
 
 anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
-def _to_list(val) -> list:
-    if isinstance(val, list):
-        return val
-    if isinstance(val, dict):
-        return [val]
-    return []
+def _parse_json(raw: str):
+    raw = re.sub(r"```json|```", "", raw).strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"[\[{].*[\]}]", raw, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+    return None
 
 
 async def get_treatment_prescription(
@@ -54,12 +60,11 @@ async def get_treatment_prescription(
   "severity": "{severity}",
   "treatments": [
     {{
-      "method": "처치 방법명 (예: 약제 살포/외과수술/토양주사)",
-      "timing": "처치 적기 (예: 4~5월 유충 부화 직후)",
+      "method": "처치 방법명",
+      "timing": "처치 적기",
       "procedure": "세부 처치 절차",
       "frequency": "처치 횟수 및 간격",
-      "precautions": ["주의사항1", "주의사항2"],
-      "is_organic": true 또는 false
+      "precautions": ["주의사항1", "주의사항2"]
     }}
   ],
   "recommended_pesticides": [
@@ -67,37 +72,30 @@ async def get_treatment_prescription(
       "product_name": "약제명",
       "active_ingredient": "유효성분",
       "dilution_ratio": "희석 배수",
-      "application_method": "처리 방법",
-      "re_entry_days": 안전 재입 일수
+      "application_method": "처리 방법"
     }}
   ],
   "follow_up": "처치 후 모니터링 방법",
-  "need_professional": true 또는 false,
-  "legal_note": "산림보호법 관련 주의사항 (해당시)"
+  "need_professional": true,
+  "disclaimer": "이 처방은 참고용이며 실제 처방은 나무의사에게 받으세요."
 }}
 """
-    import re
-    response = await anthropic_client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"```json|```", "", raw).strip()
     try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                result = json.loads(m.group())
-            except json.JSONDecodeError:
-                result = {"error": "AI 응답 파싱 실패"}
-        else:
-            result = {"error": "AI 응답 파싱 실패"}
-    result["data_source"] = "Claude AI (산림청 임업기술 기준)"
-    result["disclaimer"] = "이 처방은 참고용입니다. 실제 처방은 자격을 가진 나무의사에게 받으세요."
-    return result
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = _parse_json(response.content[0].text)
+        if result:
+            return result
+    except Exception:
+        pass
+    return {
+        "pest_name": pest_name,
+        "tree_species": tree_species,
+        "error": "처방 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.",
+    }
 
 
 async def search_approved_pesticide(
@@ -114,60 +112,17 @@ async def search_approved_pesticide(
         tree_species: 적용 수종 (미입력 시 전체)
         ingredient:   유효성분명 검색 (예: 이미다클로프리드, 페니트로티온)
     """
-    # 농촌진흥청 농약 등록 현황 API 호출
-    url = "https://apis.data.go.kr/1390000/PesticideInfoService/getPesticideInfo"
-    params = {
-        "serviceKey":  settings.DATA_GO_KR_API_KEY,
-        "pestNm":      target_pest,
-        "numOfRows":   20,
-        "pageNo":      1,
-        "_type":       "json",
-    }
-    if ingredient:
-        params["ingrdNm"] = ingredient
+    if ingredient and not target_pest:
+        query_desc = f"'{ingredient}' 성분(또는 제품명)에 관한 농약"
+    elif target_pest:
+        query_desc = f"'{target_pest}' 방제에 등록된 수목용 농약"
+    else:
+        query_desc = "대표적인 수목용 농약"
 
-    pesticides = []
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(url, params=params, timeout=10.0)
-            if resp.status_code == 200:
-                items = _to_list(
-                    resp.json().get("response", {})
-                               .get("body", {})
-                               .get("items", {})
-                               .get("item", [])
-                )
-                for p in items:
-                    if tree_species and tree_species not in p.get("cropNm", ""):
-                        continue
-                    pesticides.append({
-                        "product_name":       p.get("pestNm", ""),
-                        "registration_no":    p.get("regNo", ""),
-                        "active_ingredient":  p.get("ingrdNm", ""),
-                        "manufacturer":       p.get("compNm", ""),
-                        "target_pest":        p.get("pestName", ""),
-                        "target_crop":        p.get("cropNm", ""),
-                        "dilution_ratio":     p.get("dilutRatio", ""),
-                        "application_method": p.get("usageMethod", ""),
-                        "re_entry_days":      p.get("safeDay", ""),
-                        "expiry_date":        p.get("expDt", ""),
-                    })
-        except Exception:
-            pass
+    crop_filter = f"수종 '{tree_species}'에 적용 가능한 것만" if tree_species else ""
 
-    # API 결과 없으면 AI 보완
-    if not pesticides:
-        ingredient_filter = f"성분명에 '{ingredient}' 포함" if ingredient else ""
-        crop_filter = f"수종은 '{tree_species}'에 적용 가능" if tree_species else ""
-        if ingredient and not target_pest:
-            query_desc = f"'{ingredient}' 성분(또는 제품명)에 관한 농약"
-        elif target_pest:
-            query_desc = f"'{target_pest}' 방제에 등록된 수목용 농약"
-        else:
-            query_desc = "수목용 농약"
-        prompt = f"""
-한국에서 {query_desc}을 JSON 배열로 알려주세요.
-{ingredient_filter} {crop_filter}
+    prompt = f"""
+한국에서 {query_desc}을 JSON 배열로 알려주세요. {crop_filter}
 (다른 설명 없이 JSON 배열만 반환)
 
 [{{
@@ -175,29 +130,20 @@ async def search_approved_pesticide(
   "active_ingredient": "유효성분 및 함량",
   "dilution_ratio": "희석 배수 (예: 1000배)",
   "application_method": "처리 방법",
-  "re_entry_days": 안전 재입 일수,
+  "re_entry_days": 3,
   "note": "주의사항"
 }}]
 """
+    try:
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=2048,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        import re
-        raw = response.content[0].text.strip()
-        raw = re.sub(r"```json|```", "", raw).strip()
-        try:
-            pesticides = json.loads(raw)
-        except json.JSONDecodeError:
-            m = re.search(r"\[.*\]", raw, re.DOTALL)
-            if m:
-                try:
-                    pesticides = json.loads(m.group())
-                except json.JSONDecodeError:
-                    pesticides = []
-            else:
-                pesticides = []
+        result = _parse_json(response.content[0].text)
+        pesticides = result if isinstance(result, list) else []
+    except Exception:
+        pesticides = []
 
     return {
         "query": {"target_pest": target_pest, "tree_species": tree_species, "ingredient": ingredient},
@@ -218,41 +164,7 @@ async def get_tree_species_info(
         species_name: 수종명 (한국명 또는 학명)
         include_pests: 주요 병해충 목록 포함 여부 (기본: True)
     """
-    # 국립수목원 식물자원 서비스 API 호출
-    url = "https://openapi.kna.go.kr/openapi/service/rest/PlantService/getPlantList"
-    params = {
-        "serviceKey": settings.DATA_GO_KR_API_KEY,
-        "searchNm":   species_name,
-        "numOfRows":  5,
-        "pageNo":     1,
-        "_type":      "json",
-    }
-
-    species_data = {}
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(url, params=params, timeout=10.0)
-            if resp.status_code == 200:
-                items = _to_list(
-                    resp.json().get("response", {})
-                               .get("body", {})
-                               .get("items", {})
-                               .get("item", [])
-                )
-                if items:
-                    item = items[0]
-                    species_data = {
-                        "korean_name":  item.get("korNm", species_name),
-                        "scientific_name": item.get("sciNm", ""),
-                        "family":       item.get("familyKorNm", ""),
-                        "description":  item.get("plantPart", ""),
-                        "distribution": item.get("spread", ""),
-                    }
-        except Exception:
-            pass
-
-    # AI로 관리 정보 보완
-    pests_request = "주요 병해충 최대 3종만 간략히 포함하세요." if include_pests else ""
+    pests_request = "주요 병해충 최대 3종만 간략히 포함하세요." if include_pests else '"major_pests": [],'
     prompt = f"""
 한국의 수목 '{species_name}'에 대한 관리 정보를 JSON 형식으로 제공하세요.
 {pests_request}
@@ -281,26 +193,15 @@ async def get_tree_species_info(
   "fertilization": "시비 방법 및 시기"
 }}
 """
-    import re
-    response = await anthropic_client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"```json|```", "", raw).strip()
     try:
-        ai_data = json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                ai_data = json.loads(m.group())
-            except json.JSONDecodeError:
-                ai_data = {"error": "AI 응답 파싱 실패"}
-        else:
-            ai_data = {"error": "AI 응답 파싱 실패"}
-
-    # 공공 API 데이터와 AI 데이터 병합
-    species_data.update(ai_data)
-    return species_data
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = _parse_json(response.content[0].text)
+        if result:
+            return result
+    except Exception:
+        pass
+    return {"species_name": species_name, "error": "수종 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."}
