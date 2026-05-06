@@ -79,7 +79,7 @@ async def get_treatment_prescription(
     import re
     response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
-        max_tokens=8192,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
@@ -174,7 +174,7 @@ async def search_approved_pesticide(
 """
         response = await anthropic_client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=8192,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         import re
@@ -277,7 +277,7 @@ async def get_tree_species_info(
     import re
     response = await anthropic_client.messages.create(
         model=settings.CLAUDE_MODEL,
-        max_tokens=8192,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
