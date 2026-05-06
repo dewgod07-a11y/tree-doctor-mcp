@@ -136,7 +136,7 @@ async def _search_hospitals_public(sido: str, business_type: str, open_only: boo
                     })
                 debug["filtered"] = len(hospitals)
         except Exception as e:
-            debug["status"] = f"error: {str(e)[:80]}"
+            debug["status"] = f"error({type(e).__name__}): {str(e)[:100]}"
     return hospitals, debug
 
 
