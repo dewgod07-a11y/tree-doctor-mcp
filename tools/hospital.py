@@ -9,6 +9,15 @@ import xml.etree.ElementTree as ET
 import httpx
 from config.settings import settings
 
+_SIDO_MAP = {
+    "서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시",
+    "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시",
+    "울산": "울산광역시", "세종": "세종특별자치시", "경기": "경기도",
+    "강원": "강원특별자치도", "충북": "충청북도", "충남": "충청남도",
+    "전북": "전북특별자치도", "전남": "전라남도", "경북": "경상북도",
+    "경남": "경상남도", "제주": "제주특별자치도",
+}
+
 
 def _kakao_headers() -> dict:
     return {"Authorization": f"KakaoAK {settings.KAKAO_REST_API_KEY}"}
@@ -89,13 +98,16 @@ async def _search_hospitals_public(sido: str, business_type: str, open_only: boo
     """산림청 공공 API로 나무병원 검색"""
     pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
     api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
+    ctpvnm_full = _SIDO_MAP.get(sido, "")
+
+    params: dict = {"serviceKey": api_key, "numOfRows": 2000, "pageNo": 1}
+    if ctpvnm_full:
+        params["ctpvnm"] = ctpvnm_full  # 서버 사이드 필터 시도
+
     hospitals = []
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(pub_url, params={
-                "serviceKey": api_key,
-                "numOfRows": 2000, "pageNo": 1,
-            }, timeout=7.0)
+            resp = await client.get(pub_url, params=params, timeout=12.0)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
                 for item in root.findall(".//item"):
