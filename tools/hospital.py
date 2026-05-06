@@ -126,7 +126,7 @@ async def find_tree_hospital_nearby(
             try:
                 resp = await client.get(pub_url, params={
                     "serviceKey": api_key,
-                    "numOfRows": 300, "pageNo": 1,
+                    "numOfRows": 2000, "pageNo": 1,
                 }, timeout=15.0)
                 if resp.status_code == 200:
                     root = ET.fromstring(resp.text)
@@ -190,7 +190,7 @@ async def get_tree_hospital_detail(hospital_id: str) -> dict:
         try:
             resp = await client.get(pub_url, params={
                 "serviceKey": api_key,
-                "numOfRows": 300, "pageNo": 1,
+                "numOfRows": 2000, "pageNo": 1,
             }, timeout=15.0)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
