@@ -8,7 +8,9 @@ load_dotenv()
 @dataclass
 class Settings:
     DATA_GO_KR_API_KEY: str = os.getenv("DATA_GO_KR_API_KEY", "")
+    TREE_HOSPITAL_API_KEY: str = os.getenv("TREE_HOSPITAL_API_KEY", "")
     FORESTRY_API_BASE: str = "https://openapi.forest.go.kr/openapi/service"
+    TREE_HOSPITAL_API_BASE: str = "https://apis.data.go.kr/1400000/treeHospitalInfoService"
     KNA_API_BASE: str = "https://openapi.kna.go.kr/openapi/service"
     KAKAO_REST_API_KEY: str = os.getenv("KAKAO_REST_API_KEY", "")
     KAKAO_MAP_API_KEY: str = os.getenv("KAKAO_MAP_API_KEY", "")

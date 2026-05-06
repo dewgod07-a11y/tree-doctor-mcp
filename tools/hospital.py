@@ -116,42 +116,39 @@ async def find_tree_hospital_nearby(
         user_lat, user_lon = coords
         hospitals = await _search_hospitals_kakao(user_lat, user_lon, radius_km)
 
-        # 카카오맵 결과가 부족하면 공공 데이터 API 보완
+        # 카카오맵 결과가 부족하면 산림청 공공 API 보완
         if len(hospitals) < 3:
-            pub_url = "https://apis.data.go.kr/1400000/forestService/getTreeHospitalList"
+            pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/getTreeHospitalInfoList"
+            api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
+            # 시도명 추출 (주소 앞 2글자: 서울, 경기 등)
+            sido = location[:2] if location else ""
             params = {
-                "serviceKey": settings.DATA_GO_KR_API_KEY,
-                "numOfRows": 100, "pageNo": 1, "_type": "json",
+                "serviceKey": api_key,
+                "numOfRows": 100, "pageNo": 1,
             }
-            if business_type:
-                params["bizType"] = business_type
+            if sido:
+                params["sidoName"] = sido
             async with httpx.AsyncClient() as client:
                 try:
                     resp = await client.get(pub_url, params=params, timeout=10.0)
                     if resp.status_code == 200:
-                        raw_list = _to_list(
-                            resp.json().get("response", {})
-                                       .get("body", {})
-                                       .get("items", {})
-                                       .get("item", [])
-                        )
-                        for h in raw_list:
-                            if open_only and h.get("closeYn") == "Y":
+                        import xml.etree.ElementTree as ET
+                        root = ET.fromstring(resp.text)
+                        for item in root.findall(".//item"):
+                            def t(tag): return (item.findtext(tag) or "").strip()
+                            if open_only and t("hogyStus") == "폐업":
                                 continue
-                            h_lat = float(h.get("lat") or 0)
-                            h_lon = float(h.get("lon") or 0)
-                            if h_lat and h_lon:
-                                dist = _haversine_km(user_lat, user_lon, h_lat, h_lon)
-                                if dist <= radius_km:
-                                    hospitals.append({
-                                        "hospital_id":   h.get("hospId", ""),
-                                        "name":          h.get("hospNm", ""),
-                                        "address":       h.get("addr", ""),
-                                        "phone":         h.get("telNo", ""),
-                                        "business_type": h.get("bizType", ""),
-                                        "distance_km":   round(dist, 2),
-                                        "status":        "영업중",
-                                    })
+                            if business_type and business_type not in t("hogyBizType"):
+                                continue
+                            hospitals.append({
+                                "hospital_id":   t("hogyNo"),
+                                "name":          t("hogyName"),
+                                "address":       t("hogyAddr"),
+                                "phone":         t("hogyTelno"),
+                                "business_type": t("hogyBizType"),
+                                "distance_km":   0,
+                                "status":        t("hogyStus") or "영업중",
+                            })
                 except Exception:
                     pass
 
