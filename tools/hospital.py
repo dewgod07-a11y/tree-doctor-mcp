@@ -110,51 +110,50 @@ async def find_tree_hospital_nearby(
     """
     kakao_map_url = f"https://map.kakao.com/?q=나무병원&where={location}"
     hospitals = []
+    sido = location[:2] if location else ""
 
     coords = await _geocode_address(location)
     if coords:
         user_lat, user_lon = coords
         hospitals = await _search_hospitals_kakao(user_lat, user_lon, radius_km)
 
-        # 카카오맵 결과가 부족하면 산림청 공공 API 보완
-        if len(hospitals) < 3:
-            pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
-            api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
-            params = {
-                "serviceKey": api_key,
-                "numOfRows": 200, "pageNo": 1,
-            }
-            async with httpx.AsyncClient() as client:
-                try:
-                    resp = await client.get(pub_url, params=params, timeout=15.0)
-                    if resp.status_code == 200:
-                        import xml.etree.ElementTree as ET
-                        root = ET.fromstring(resp.text)
-                        for item in root.findall(".//item"):
-                            def t(tag): return (item.findtext(tag) or "").strip()
-                            if open_only and t("clsbiz") == "폐업":
-                                continue
-                            if business_type and business_type not in t("bsnsskindnm"):
-                                continue
-                            # 시도명으로 지역 필터링
-                            sido = location[:2] if location else ""
-                            addr = t("lctnaddr")
-                            if sido and sido not in addr and sido not in t("ctpvnm"):
-                                continue
-                            hospitals.append({
-                                "hospital_id":   t("corpnm"),
-                                "name":          t("corpnm"),
-                                "address":       addr,
-                                "phone":         "",
-                                "business_type": t("bsnsskindnm"),
-                                "distance_km":   0,
-                                "status":        t("clsbiz") or "영업중",
-                                "representative": t("rprsvnm"),
-                            })
-                except Exception:
-                    pass
+    # 카카오 결과 부족 or 지오코딩 실패 시 산림청 공공 API로 보완
+    if len(hospitals) < 3:
+        import xml.etree.ElementTree as ET
+        pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
+        api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(pub_url, params={
+                    "serviceKey": api_key,
+                    "numOfRows": 300, "pageNo": 1,
+                }, timeout=15.0)
+                if resp.status_code == 200:
+                    root = ET.fromstring(resp.text)
+                    for item in root.findall(".//item"):
+                        def t(tag): return (item.findtext(tag) or "").strip()
+                        if open_only and t("clsbiz") == "폐업":
+                            continue
+                        if business_type and business_type not in t("bsnsskindnm"):
+                            continue
+                        addr = t("lctnaddr")
+                        ctpv = t("ctpvnm")
+                        if sido and sido not in addr and sido not in ctpv:
+                            continue
+                        hospitals.append({
+                            "hospital_id":    t("corpnm"),
+                            "name":           t("corpnm"),
+                            "address":        addr,
+                            "phone":          "",
+                            "business_type":  t("bsnsskindnm"),
+                            "distance_km":    0,
+                            "status":         t("clsbiz") or "영업중",
+                            "representative": t("rprsvnm"),
+                        })
+            except Exception:
+                pass
 
-        hospitals.sort(key=lambda x: x["distance_km"])
+    hospitals.sort(key=lambda x: x["distance_km"])
 
     if not hospitals:
         return {
