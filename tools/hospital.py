@@ -238,73 +238,42 @@ async def find_tree_doctor(
 
 async def get_tree_hospital_detail(hospital_id: str) -> dict:
     """
-    나무병원 ID로 상세 정보를 조회합니다.
+    나무병원 이름으로 상세 정보를 조회합니다.
 
     Args:
-        hospital_id: 나무병원 고유 ID (find_tree_hospital_nearby 결과값)
+        hospital_id: 나무병원 이름 또는 ID (find_tree_hospital_nearby 결과값)
     """
-    # 공공 데이터 API 조회 (산림청 등록 병원 ID인 경우)
-    url = "https://apis.data.go.kr/1400000/forestService/getTreeHospitalDetail"
-    params = {"serviceKey": settings.DATA_GO_KR_API_KEY, "hospId": hospital_id, "_type": "json"}
+    import xml.etree.ElementTree as ET
+    api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
+    pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
 
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(url, params=params, timeout=10.0)
+            resp = await client.get(pub_url, params={
+                "serviceKey": api_key,
+                "numOfRows": 300, "pageNo": 1,
+            }, timeout=15.0)
             if resp.status_code == 200:
-                item = (
-                    resp.json().get("response", {})
-                               .get("body", {})
-                               .get("items", {})
-                               .get("item", {})
-                )
-                if item:
-                    return {
-                        "hospital_id":     hospital_id,
-                        "name":            item.get("hospNm", ""),
-                        "address":         item.get("addr", ""),
-                        "phone":           item.get("telNo", ""),
-                        "ceo_name":        item.get("ceoNm", ""),
-                        "business_types":  item.get("bizTypes", []),
-                        "registered_date": item.get("regDt", ""),
-                        "status":          "영업중" if item.get("closeYn") != "Y" else "폐업",
-                    }
+                root = ET.fromstring(resp.text)
+                for item in root.findall(".//item"):
+                    def t(tag): return (item.findtext(tag) or "").strip()
+                    hosp = t("corpnm")
+                    if hospital_id in hosp or hosp in hospital_id:
+                        return {
+                            "hospital_id":   hosp,
+                            "name":          hosp,
+                            "address":       t("lctnaddr"),
+                            "business_type": t("bsnsskindnm"),
+                            "region":        t("ctpvnm"),
+                            "district":      t("sggnm"),
+                            "status":        t("clsbiz") or "영업중",
+                            "zip":           t("zip"),
+                        }
         except Exception:
             pass
 
-    # 카카오맵 place ID인 경우 (숫자로만 구성) → 카카오맵 링크 반환
-    if hospital_id.isdigit():
-        kakao_place_url = f"https://place.map.kakao.com/{hospital_id}"
-        # 카카오맵 키워드 검색으로 장소 정보 재조회 시도
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.get(
-                    f"{settings.KAKAO_MAP_API_BASE}/search/keyword.json",
-                    headers=_kakao_headers(),
-                    params={"query": "나무병원", "size": 15}, timeout=10.0,
-                )
-                if resp.status_code == 200:
-                    for d in resp.json().get("documents", []):
-                        if d.get("id") == hospital_id:
-                            return {
-                                "hospital_id":   hospital_id,
-                                "name":          d.get("place_name", ""),
-                                "address":       d.get("road_address_name", "") or d.get("address_name", ""),
-                                "phone":         d.get("phone", ""),
-                                "business_type": d.get("category_name", ""),
-                                "status":        "영업중",
-                                "kakao_url":     d.get("place_url", kakao_place_url),
-                            }
-            except Exception:
-                pass
-        return {
-            "hospital_id":  hospital_id,
-            "kakao_url":    kakao_place_url,
-            "message":      "카카오맵에서 상세 정보를 확인하세요.",
-            "status":       "조회 완료",
-        }
-
     return {
         "hospital_id": hospital_id,
-        "message":     "해당 ID의 나무병원 정보를 찾을 수 없습니다.",
-        "tip":         "find_tree_hospital_nearby로 병원을 먼저 검색하세요.",
+        "message":     f"'{hospital_id}' 나무병원 정보를 찾을 수 없습니다.",
+        "tip":         "find_tree_hospital_nearby로 병원 목록을 먼저 조회하세요.",
     }
