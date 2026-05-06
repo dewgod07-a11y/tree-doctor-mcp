@@ -148,7 +148,6 @@ async def find_tree_hospital_nearby(
                             "business_type":  t("bsnsskindnm"),
                             "distance_km":    0,
                             "status":         t("clsbiz") or "영업중",
-                            "representative": t("rprsvnm"),
                         })
             except Exception:
                 pass
