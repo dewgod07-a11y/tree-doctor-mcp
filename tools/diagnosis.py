@@ -106,10 +106,12 @@ async def diagnose_tree_disease_by_image(
     location: str = "",
 ) -> dict:
     """
-    수목 사진을 업로드하면 AI Vision으로 병해충을 분석합니다.
+    사용자가 실제 사진 URL을 직접 제공한 경우에만 사용합니다.
+    증상을 텍스트로 설명하는 경우는 diagnose_tree_disease를 사용하세요.
+    image_url은 절대 임의로 생성하거나 예시 URL을 사용하지 마세요.
 
     Args:
-        image_url:    수목 이상 증상 사진 URL (공개 접근 가능한 URL)
+        image_url:    사용자가 제공한 수목 사진 URL (반드시 실제 URL이어야 함)
         tree_species: 수종명 (모를 경우 '모름' 입력)
         location:     촬영 위치 (예: 서울 여의도)
     """
