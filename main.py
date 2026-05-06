@@ -13,10 +13,7 @@ from tools.diagnosis import (
     get_pest_detail,
     get_seasonal_pest_alert,
 )
-from tools.hospital import (
-    find_tree_hospital_nearby,
-    get_tree_hospital_detail,
-)
+from tools.hospital import find_tree_hospital_nearby
 from tools.prescription import (
     get_treatment_prescription,
     search_approved_pesticide,
@@ -58,7 +55,6 @@ mcp.tool()(get_pest_detail)
 mcp.tool()(get_seasonal_pest_alert)
 
 mcp.tool()(find_tree_hospital_nearby)
-mcp.tool()(get_tree_hospital_detail)
 
 mcp.tool()(get_treatment_prescription)
 mcp.tool()(search_approved_pesticide)
