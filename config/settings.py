@@ -16,7 +16,7 @@ class Settings:
     KAKAO_MAP_API_KEY: str = os.getenv("KAKAO_MAP_API_KEY", "")
     KAKAO_MAP_API_BASE: str = "https://dapi.kakao.com/v2/local"
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    CLAUDE_MODEL: str = "claude-sonnet-4-6"
+    CLAUDE_MODEL: str = "claude-haiku-4-5-20251001"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = False
