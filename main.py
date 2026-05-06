@@ -15,7 +15,6 @@ from tools.diagnosis import (
 )
 from tools.hospital import (
     find_tree_hospital_nearby,
-    find_tree_doctor,
     get_tree_hospital_detail,
 )
 from tools.prescription import (
@@ -59,7 +58,6 @@ mcp.tool()(get_pest_detail)
 mcp.tool()(get_seasonal_pest_alert)
 
 mcp.tool()(find_tree_hospital_nearby)
-mcp.tool()(find_tree_doctor)
 mcp.tool()(get_tree_hospital_detail)
 
 mcp.tool()(get_treatment_prescription)

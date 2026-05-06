@@ -175,66 +175,6 @@ async def find_tree_hospital_nearby(
     }
 
 
-async def find_tree_doctor(
-    name: str = "",
-    region: str = "",
-    affiliation: str = "",
-) -> dict:
-    """
-    나무의사 자격증 보유자를 이름 또는 지역으로 조회합니다.
-
-    Args:
-        name:        나무의사 이름 (부분 검색, 미입력 가능)
-        region:      지역 (예: 경기도, 부산, 미입력 시 전국)
-        affiliation: 소속 나무병원명
-    """
-    import xml.etree.ElementTree as ET
-    doctors = []
-
-    # 산림청 나무병원 API에서 대표자(나무의사) 정보 조회
-    pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
-    api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
-    sido = region[:2] if region else ""
-
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(pub_url, params={
-                "serviceKey": api_key,
-                "numOfRows": 300, "pageNo": 1,
-            }, timeout=15.0)
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.text)
-                for item in root.findall(".//item"):
-                    def t(tag): return (item.findtext(tag) or "").strip()
-                    if t("clsbiz") == "폐업":
-                        continue
-                    addr = t("lctnaddr")
-                    ctpv = t("ctpvnm")
-                    if sido and sido not in addr and sido not in ctpv:
-                        continue
-                    hosp = t("corpnm")
-                    if name and name not in hosp:
-                        continue
-                    if affiliation and affiliation not in hosp:
-                        continue
-                    doctors.append({
-                        "hospital_name": hosp,
-                        "region":        ctpv,
-                        "address":       addr,
-                        "business_type": t("bsnsskindnm"),
-                        "status":        t("clsbiz") or "영업중",
-                    })
-        except Exception:
-            pass
-
-    region_str = region or "전국"
-    return {
-        "query": {"name": name, "region": region, "affiliation": affiliation},
-        "total_count": len(doctors),
-        "doctors": doctors,
-        "tip": f"산림청 나무병원 등록 대표자 기준 조회 ('{region_str}'). 나무의사 공식 조회: https://www.forest.go.kr",
-    }
-
 
 async def get_tree_hospital_detail(hospital_id: str) -> dict:
     """
