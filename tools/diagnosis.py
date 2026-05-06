@@ -10,7 +10,6 @@ tools/diagnosis.py
 
 from __future__ import annotations
 import json
-import httpx
 from anthropic import AsyncAnthropic
 from config.settings import settings
 
@@ -176,45 +175,19 @@ async def get_pest_detail(
     병해충 이름으로 상세 정보를 조회합니다. (생태, 피해 양상, 방제 방법, 발생 시기)
 
     Args:
-        pest_name:         병해충 이름 (예: 솔잎혹파리, 밤나무혹벌)
+        pest_name:         병해충 이름 (예: 솔잎혹파리, 밤나무혹벌, 미국흰불나방)
         include_pesticide: 사용 가능한 약제 목록 포함 여부
     """
-    # 산림청 임업기술 핸드북 API 호출
-    url = f"{settings.FORESTRY_API_BASE}/ForestTechService/getForestTechList"
-    params = {
-        "serviceKey": settings.DATA_GO_KR_API_KEY,
-        "searchNm": pest_name,
-        "numOfRows": 5,
-        "pageNo": 1,
-        "_type": "json",
-    }
-
-    items = []
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(url, params=params, timeout=10.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                items = _to_list(
-                    data.get("response", {})
-                        .get("body", {})
-                        .get("items", {})
-                        .get("item", [])
-                )
-        except Exception:
-            pass  # API 실패 시 AI fallback으로 전환
-
-    # API 결과 없으면 Claude AI로 보완
-    if not items:
-        pesticide_field = '"pesticides": ["사용 가능 약제1", "약제2"],' if include_pesticide else ""
-        prompt = f"""
+    import re
+    pesticide_field = '"pesticides": ["사용 약제1", "약제2"],' if include_pesticide else ""
+    prompt = f"""
 한국의 수목 병해충 '{pest_name}'에 대해 아래 JSON 형식으로 정보를 제공하세요.
 (다른 설명 없이 JSON만 반환)
 
 {{
   "pest_name": "{pest_name}",
   "category": "병 또는 해충",
-  "host_trees": ["주요 기주 수종1", "수종2"],
+  "host_trees": ["기주 수종1", "수종2"],
   "occurrence_months": [4, 5, 6],
   "damage_symptoms": "피해 증상 설명",
   "ecology": "생태 및 생활사",
@@ -223,33 +196,26 @@ async def get_pest_detail(
   "prevention": "예방 방법"
 }}
 """
-        import re
+    try:
+        response = await anthropic_client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"```json|```", "", raw).strip()
         try:
-            response = await anthropic_client.messages.create(
-                model=settings.CLAUDE_MODEL,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = response.content[0].text.strip()
-            raw = re.sub(r"```json|```", "", raw).strip()
-            try:
-                return json.loads(raw)
-            except json.JSONDecodeError:
-                m = re.search(r"\{.*\}", raw, re.DOTALL)
-                if m:
-                    try:
-                        return json.loads(m.group())
-                    except json.JSONDecodeError:
-                        pass
-        except Exception as e:
-            pass
-        return {"pest_name": pest_name, "error": f"'{pest_name}' 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."}
-
-    return {
-        "pest_name": pest_name,
-        "data_source": "산림청 임업기술 핸드북 (+ AI 보완)",
-        "results": items,
-    }
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
+    except Exception:
+        pass
+    return {"pest_name": pest_name, "error": f"'{pest_name}' 정보를 가져오지 못했습니다."}
 
 
 # ── Tool 4: get_seasonal_pest_alert ─────────────────────────────────────────
