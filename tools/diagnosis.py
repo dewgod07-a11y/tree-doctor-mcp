@@ -211,36 +211,39 @@ async def get_pest_detail(
 한국의 수목 병해충 '{pest_name}'에 대해 아래 JSON 형식으로 정보를 제공하세요.
 (다른 설명 없이 JSON만 반환)
 
-[{{
+{{
   "pest_name": "{pest_name}",
   "category": "병 또는 해충",
-  "host_trees": ["주요 기주 수종 목록"],
-  "occurrence_months": [발생 월 숫자 목록],
+  "host_trees": ["주요 기주 수종1", "수종2"],
+  "occurrence_months": [4, 5, 6],
   "damage_symptoms": "피해 증상 설명",
   "ecology": "생태 및 생활사",
   "control_method": "방제 방법",
   {pesticide_field}
   "prevention": "예방 방법"
-}}]
+}}
 """
-        response = await anthropic_client.messages.create(
-            model=settings.CLAUDE_MODEL,
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
         import re
-        raw = response.content[0].text.strip()
-        raw = re.sub(r"```json|```", "", raw).strip()
         try:
-            return json.loads(raw)
-        except Exception:
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
-            if m:
-                try:
-                    return json.loads(m.group())
-                except Exception:
-                    pass
-            return {"error": "파싱 실패", "pest_name": pest_name}
+            response = await anthropic_client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = response.content[0].text.strip()
+            raw = re.sub(r"```json|```", "", raw).strip()
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                m = re.search(r"\{.*\}", raw, re.DOTALL)
+                if m:
+                    try:
+                        return json.loads(m.group())
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            pass
+        return {"pest_name": pest_name, "error": f"'{pest_name}' 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."}
 
     return {
         "pest_name": pest_name,
