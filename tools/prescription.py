@@ -101,17 +101,18 @@ async def get_treatment_prescription(
 
 
 async def search_approved_pesticide(
-    target_pest: str,
+    target_pest: str = "",
     tree_species: str = "",
     ingredient: str = "",
 ) -> dict:
     """
     수목 병해충 방제용으로 승인된 농약을 검색합니다.
+    농약 제품명·성분명으로도 검색 가능합니다.
 
     Args:
-        target_pest:  방제 대상 병해충명
+        target_pest:  방제 대상 병해충명 또는 농약 제품명 (예: 스미치온, 솔잎혹파리)
         tree_species: 적용 수종 (미입력 시 전체)
-        ingredient:   성분명 검색 (예: 이미다클로프리드)
+        ingredient:   유효성분명 검색 (예: 이미다클로프리드, 페니트로티온)
     """
     # 농촌진흥청 농약 등록 현황 API 호출
     url = "https://apis.data.go.kr/1390000/PesticideInfoService/getPesticideInfo"
@@ -158,8 +159,14 @@ async def search_approved_pesticide(
     if not pesticides:
         ingredient_filter = f"성분명에 '{ingredient}' 포함" if ingredient else ""
         crop_filter = f"수종은 '{tree_species}'에 적용 가능" if tree_species else ""
+        if ingredient and not target_pest:
+            query_desc = f"'{ingredient}' 성분(또는 제품명)에 관한 농약"
+        elif target_pest:
+            query_desc = f"'{target_pest}' 방제에 등록된 수목용 농약"
+        else:
+            query_desc = "수목용 농약"
         prompt = f"""
-한국에서 '{target_pest}' 방제에 등록된 수목용 농약을 JSON 배열로 알려주세요.
+한국에서 {query_desc}을 JSON 배열로 알려주세요.
 {ingredient_filter} {crop_filter}
 (다른 설명 없이 JSON 배열만 반환)
 
