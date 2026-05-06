@@ -94,23 +94,28 @@ async def _search_hospitals_kakao(lat: float, lon: float, radius_km: float) -> l
     return hospitals
 
 
-async def _search_hospitals_public(sido: str, business_type: str, open_only: bool) -> list:
-    """산림청 공공 API로 나무병원 검색"""
+async def _search_hospitals_public(sido: str, business_type: str, open_only: bool) -> tuple:
+    """산림청 공공 API로 나무병원 검색. (hospitals, debug_info) 반환"""
     pub_url = f"{settings.TREE_HOSPITAL_API_BASE}/treeHospitalInfoList"
     api_key = settings.TREE_HOSPITAL_API_KEY or settings.DATA_GO_KR_API_KEY
     ctpvnm_full = _SIDO_MAP.get(sido, "")
 
     params: dict = {"serviceKey": api_key, "numOfRows": 2000, "pageNo": 1}
     if ctpvnm_full:
-        params["ctpvnm"] = ctpvnm_full  # 서버 사이드 필터 시도
+        params["ctpvnm"] = ctpvnm_full
 
     hospitals = []
+    debug: dict = {"status": "not_called", "total_items": 0, "filtered": 0, "sido": sido, "ctpvnm": ctpvnm_full}
+
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(pub_url, params=params, timeout=12.0)
+            debug["status"] = resp.status_code
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
-                for item in root.findall(".//item"):
+                all_items = root.findall(".//item")
+                debug["total_items"] = len(all_items)
+                for item in all_items:
                     def t(tag, _item=item): return (_item.findtext(tag) or "").strip()
                     if open_only and t("clsbiz") == "폐업":
                         continue
@@ -129,9 +134,10 @@ async def _search_hospitals_public(sido: str, business_type: str, open_only: boo
                         "distance_km":   0,
                         "status":        t("clsbiz") or "영업중",
                     })
-        except Exception:
-            pass
-    return hospitals
+                debug["filtered"] = len(hospitals)
+        except Exception as e:
+            debug["status"] = f"error: {str(e)[:80]}"
+    return hospitals, debug
 
 
 async def find_tree_hospital_nearby(
@@ -153,7 +159,7 @@ async def find_tree_hospital_nearby(
     sido = location[:2] if location else ""
 
     # 지오코딩 + 공공 API 병렬 실행
-    coords, pub_hospitals = await asyncio.gather(
+    coords, (pub_hospitals, pub_debug) = await asyncio.gather(
         _geocode_address(location),
         _search_hospitals_public(sido, business_type, open_only),
     )
@@ -179,15 +185,22 @@ async def find_tree_hospital_nearby(
 
     hospitals.sort(key=lambda x: x["distance_km"])
 
+    _debug = {
+        "kakao_found": len(kakao_hospitals),
+        "pub_api": pub_debug,
+        "geocode_ok": coords is not None,
+    }
+
     if not hospitals:
         return {
             "search_location": location,
             "radius_km": radius_km,
             "total_count": 0,
             "hospitals": [],
-            "message": f"{location} 반경 {radius_km}km 내 나무병원을 찾지 못했습니다. 반경을 늘리거나 다른 지역을 검색해보세요.",
+            "message": f"{location} 반경 {radius_km}km 내 나무병원을 찾지 못했습니다.",
             "kakao_map_url": kakao_map_url,
             "tip": "카카오맵에서 '나무병원'으로 직접 검색하거나 산림청(forest.go.kr)에 문의하세요.",
+            "_debug": _debug,
         }
 
     return {
