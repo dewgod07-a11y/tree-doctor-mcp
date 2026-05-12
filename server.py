@@ -16,8 +16,6 @@ from tools.diagnosis import (
 )
 from tools.hospital import (
     find_tree_hospital_nearby,
-    find_tree_doctor,
-    get_tree_hospital_detail,
 )
 from tools.prescription import (
     get_treatment_prescription,
@@ -46,10 +44,8 @@ mcp.tool()(diagnose_tree_disease_by_image)
 mcp.tool()(get_pest_detail)
 mcp.tool()(get_seasonal_pest_alert)
 
-# 🏥 나무병원 찾기 (3개)
+# 🏥 나무병원 찾기 (1개)
 mcp.tool()(find_tree_hospital_nearby)
-mcp.tool()(find_tree_doctor)
-mcp.tool()(get_tree_hospital_detail)
 
 # 💊 수목 처방 DB (3개)
 mcp.tool()(get_treatment_prescription)
